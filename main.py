@@ -46,8 +46,8 @@ async def receber_webhook_localizacao(
     A lógica de salvamento no DB foi REMOVIDA para fins de debug.
     """
     
-    dados_dict = dados_localizacao.model_dump()
-    
+    #dados_dict = dados_localizacao.model_dump()
+    dados_json_string = dados_localizacao.model_dump_json(indent=4)
     # ---------------------------------------------------------------------
     # Lógica de Log (Visualização no Log do Render)
     # ---------------------------------------------------------------------
@@ -60,7 +60,8 @@ async def receber_webhook_localizacao(
     print(f"-> Velocidade: {dados_dict['speed']} km/h")
     # Loga o JSON completo para garantir que todos os dados foram recebidos corretamente:
     print("-> Dados Completos (JSON):")
-    print(json.dumps(dados_dict, indent=4))
+    #print(json.dumps(dados_dict, indent=4))
+    print(dados_json_string)
     print("-" * 50)
     
     # ---------------------------------------------------------------------
@@ -74,3 +75,4 @@ async def receber_webhook_localizacao(
     return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin, "mensagem": "Dados logados com sucesso."}
 
 # Fim do main.py
+
