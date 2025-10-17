@@ -46,7 +46,7 @@ async def receber_webhook_localizacao(
     A lógica de salvamento no DB foi REMOVIDA para fins de debug.
     """
     
-    #dados_dict = dados_localizacao.model_dump()
+    dados_dict = dados_localizacao.model_dump()
     dados_json_string = dados_localizacao.model_dump_json(indent=4)
     # ---------------------------------------------------------------------
     # Lógica de Log (Visualização no Log do Render)
@@ -55,9 +55,9 @@ async def receber_webhook_localizacao(
     # Geramos um log de confirmação e um log detalhado do dado:
     print("-" * 50)
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Webhook Recebido com Sucesso!")
-    print(f"-> Veículo (VIN): {dados_json_string['vin']}")
-    print(f"-> Localização: {dados_json_string['latitude']}, {dados_dict['longitude']}")
-    print(f"-> Velocidade: {dados_json_string['speed']} km/h")
+    print(f"-> Veículo (VIN): {dados_dict['vin']}")
+    print(f"-> Localização: {dados_dict['latitude']}, {dados_dict['longitude']}")
+    print(f"-> Velocidade: {dados_dict['speed']} km/h")
     # Loga o JSON completo para garantir que todos os dados foram recebidos corretamente:
     print("-> Dados Completos (JSON):")
     #print(json.dumps(dados_json_string, indent=4))
@@ -75,5 +75,6 @@ async def receber_webhook_localizacao(
     return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin, "mensagem": "Dados logados com sucesso."}
 
 # Fim do main.py
+
 
 
