@@ -1,87 +1,99 @@
 from fastapi import FastAPI, Request, HTTPException, status
 from pydantic import BaseModel
 import os
-import json
-from typing import Dict, Any
+import psycopg2 
+from datetime import datetime
+from typing import List, Optional # Usaremos List para "fields" e Optional para possíveis nulos
 
 # =========================================================================
-# 1. Definir o Modelo de Dados (Opcional, mas Altamente Recomendado)
-#    Use a documentação da sua API para mapear a estrutura do JSON de Inscrição.
-#    Isso permite que o FastAPI valide os dados de entrada automaticamente.
+# 1. Modelo de Dados (AJUSTADO PARA LOCALIZAÇÃO DE VEÍCULOS)
 # =========================================================================
 
-# Exemplo de um modelo de dados para a Inscrição (ajuste conforme a sua API)
-class InscricaoPayload(BaseModel):
-    id_inscricao: int
-    nome_participante: str
-    email: str
-    status_inscricao: str
-    data_evento: str
-
-# Inicializa a aplicação FastAPI
-app = FastAPI(title="Webhook de Inscrições")
+class LocalizacaoPayload(BaseModel):
+    vehicle_id: str
+    vin: str # Vehicle Identification Number (Chassi)
+    vehicle_identification: str
+    hour_meter: float
+    fuel_level: float
+    compass_bearing: int
+    speed: float
+    latitude: float
+    longitude: float
+    ts: datetime # Timestamp da leitura (o Pydantic converte a string ISO para datetime)
+    org_id: str
+    org_name: str
+    fields: Optional[List[str]] = None # Lista de strings, pode ser nulo/vazio
 
 # =========================================================================
-# 2. O Endpoint do Webhook
-#    O decorator (@app.post) define a rota e o método HTTP (POST)
+# 2. Configuração e Inicialização
 # =========================================================================
 
-# Rota do webhook (Use a rota que você deseja colocar no campo 'URL' da API)
-@app.post("/webhook-inscricoes", status_code=status.HTTP_201_CREATED)
-async def receber_webhook_inscricao(
-    # Aqui, o FastAPI tenta mapear o JSON de entrada para o modelo (validação automática!)
-    dados_inscricao: InscricaoPayload,
-    # Você pode injetar a Requisição se precisar de headers (ex: para Autenticação)
+app = FastAPI(title="Webhook de Localização em Tempo Real")
+DB_URL = os.environ.get("DATABASE_URL")
+
+# =========================================================================
+# 3. Endpoint do Webhook
+# =========================================================================
+
+@app.post("/webhook-realtime", status_code=status.HTTP_201_CREATED)
+async def receber_webhook_localizacao(
+    dados_localizacao: LocalizacaoPayload,
     request: Request
 ):
     """
-    Recebe o Webhook da plataforma de inscrições, processa os dados 
-    e retorna o código 201 em até 5 segundos.
+    Recebe o Webhook POST com dados de localização, salva no PostgreSQL e retorna 201.
     """
     
-    # ---------------------------------------------------------------------
-    # Lógica de Autenticação (IMPORTANTE se a API exigir)
-    # ---------------------------------------------------------------------
-    # Exemplo: Se a API enviar um token no Header 'X-Auth-Token':
-    # expected_token = os.environ.get("API_SECRET_TOKEN")
-    # sent_token = request.headers.get("X-Auth-Token")
-    #
-    # if sent_token != expected_token:
-    #     # Retornar 401 Unauthoized (Não Autorizado)
-    #     raise HTTPException(
-    #         status_code=status.HTTP_401_UNAUTHORIZED, 
-    #         detail="Token de Autenticação Inválido"
-    #     )
+    # ... [ Lógica de Autenticação Opcional, mas RECOMENDADA! ] ...
+    
+    dados_dict = dados_localizacao.model_dump()
+    
+    conn = None
+    cursor = None
+    try:
+        # 1. Conexão
+        conn = psycopg2.connect(DB_URL)
+        cursor = conn.cursor()
         
-    # ---------------------------------------------------------------------
-    # Lógica de Processamento de Dados para o Hop
-    # ---------------------------------------------------------------------
-    
-    # Converta o modelo Pydantic para um dicionário para manipulação/armazenamento
-    dados_dict = dados_inscricao.model_dump()
-    
-    # Neste ponto, você SALVA os dados para que o Hop possa buscá-los.
-    # Opções mais robustas em nuvem:
-    # 1. Armazenar em um Banco de Dados (ex: PostgreSQL no Render).
-    # 2. Enviar para uma Fila de Mensagens (ex: Redis/Kafka) que o Hop consome.
+        # 2. Query de Inserção (Ajuste os nomes das colunas conforme seu DB)
+        # Note que separamos 'fields' para salvar a lista como JSONB no PostgreSQL 
+        # (se a tabela suportar) ou convertemos para string.
+        
+        # Para simplificar, vamos juntar a lista 'fields' em uma única string:
+        fields_str = ", ".join(dados_dict['fields']) if dados_dict['fields'] else None
 
-    print(f"Webhook Recebido para a inscrição ID: {dados_dict['id_inscricao']}")
-    
-    # Exemplo: Salvar em um arquivo local (NÃO PERSISTENTE NO RENDER PADRÃO, 
-    # use apenas para teste local. Use um BD para produção!)
-    # with open("inscricoes.jsonl", "a") as f:
-    #    f.write(json.dumps(dados_dict) + "\n")
+        insert_query = """
+        INSERT INTO localizacao_raw (
+            vehicle_id, vin, vehicle_identification, hour_meter, fuel_level, 
+            compass_bearing, speed, latitude, longitude, ts_leitura, 
+            org_id, org_name, fields_tags, data_recebimento
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (vehicle_id, ts_leitura) DO NOTHING;
+        """
+        
+        # 3. Execução
+        cursor.execute(insert_query, (
+            dados_dict['vehicle_id'], dados_dict['vin'], dados_dict['vehicle_identification'], 
+            dados_dict['hour_meter'], dados_dict['fuel_level'], dados_dict['compass_bearing'], 
+            dados_dict['speed'], dados_dict['latitude'], dados_dict['longitude'], 
+            dados_dict['ts'], dados_dict['org_id'], dados_dict['org_name'], 
+            fields_str, datetime.now()
+        ))
+        
+        conn.commit()
+        
+        print(f"Log: Localização do veículo {dados_dict['vin']} salva. Lat/Lon: {dados_dict['latitude']}/{dados_dict['longitude']}")
+        
+    except psycopg2.Error as e:
+        if conn: conn.rollback()
+        print(f"ERRO CRÍTICO NO DB: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro interno ao persistir dados de localização."
+        )
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
 
-
-    # ---------------------------------------------------------------------
-    # Resposta
-    # ---------------------------------------------------------------------
-    # O FastAPI já garante o status 201 (CREATED) pelo decorator.
-    # O retorno pode ser uma mensagem de confirmação.
-    return {"mensagem": "Inscrição recebida com sucesso. Processando para relatório."}
-
-# =========================================================================
-# 3. Configuração de Inicialização (para Gunicorn/Uvicorn)
-# =========================================================================
-# Você não precisa desse bloco se estiver usando Gunicorn/Uvicorn em produção.
-# O Render usará o Start Command abaixo.
+    return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin}
