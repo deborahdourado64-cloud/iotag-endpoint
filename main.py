@@ -1,12 +1,12 @@
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, status
 from pydantic import BaseModel
-import os
-import psycopg2 
+import json
 from datetime import datetime
-from typing import List, Optional # Usaremos List para "fields" e Optional para possíveis nulos
+from typing import List, Optional
 
 # =========================================================================
-# 1. Modelo de Dados (AJUSTADO PARA LOCALIZAÇÃO DE VEÍCULOS)
+# 1. Modelo de Dados (Baseado no JSON de Localização)
+#    Esta validação é feita automaticamente pelo FastAPI/Pydantic.
 # =========================================================================
 
 class LocalizacaoEmTempoReal(BaseModel):
@@ -28,76 +28,49 @@ class LocalizacaoEmTempoReal(BaseModel):
 # 2. Configuração e Inicialização
 # =========================================================================
 
-app = FastAPI(title="Webhook de Localização em Tempo Real")
-DB_URL = os.environ.get("DATABASE_URL")
+app = FastAPI(title="Webhook de Localização (Somente Log)")
 
 # =========================================================================
 # 3. Endpoint do Webhook
 # =========================================================================
 
-@app.post("/webhook-inscricoes", status_code=status.HTTP_201_CREATED)
+# Rota configurada para /webhook-realtime (Conforme sugerido na correção do 404)
+@app.post("/webhook-realtime", status_code=status.HTTP_201_CREATED)
 async def receber_webhook_localizacao(
+    # FastAPI/Pydantic tenta validar o JSON de entrada aqui:
     dados_localizacao: LocalizacaoEmTempoReal,
     request: Request
 ):
     """
-    Recebe o Webhook POST com dados de localização, salva no PostgreSQL e retorna 201.
+    Recebe o Webhook POST, valida os dados, loga o conteúdo e retorna 201.
+    A lógica de salvamento no DB foi REMOVIDA para fins de debug.
     """
-    
-    # ... [ Lógica de Autenticação Opcional, mas RECOMENDADA! ] ...
     
     dados_dict = dados_localizacao.model_dump()
     
-    conn = None
-    cursor = None
-    try:
-        # 1. Conexão
-        conn = psycopg2.connect(DB_URL)
-        cursor = conn.cursor()
-        
-        # 2. Query de Inserção (Ajuste os nomes das colunas conforme seu DB)
-        # Note que separamos 'fields' para salvar a lista como JSONB no PostgreSQL 
-        # (se a tabela suportar) ou convertemos para string.
-        
-        # Para simplificar, vamos juntar a lista 'fields' em uma única string:
-        fields_str = ", ".join(dados_dict['fields']) if dados_dict['fields'] else None
+    # ---------------------------------------------------------------------
+    # Lógica de Log (Visualização no Log do Render)
+    # ---------------------------------------------------------------------
+    
+    # Geramos um log de confirmação e um log detalhado do dado:
+    print("-" * 50)
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Webhook Recebido com Sucesso!")
+    print(f"-> Veículo (VIN): {dados_dict['vin']}")
+    print(f"-> Localização: {dados_dict['latitude']}, {dados_dict['longitude']}")
+    print(f"-> Velocidade: {dados_dict['speed']} km/h")
+    # Loga o JSON completo para garantir que todos os dados foram recebidos corretamente:
+    print("-> Dados Completos (JSON):")
+    print(json.dumps(dados_dict, indent=4))
+    print("-" * 50)
+    
+    # ---------------------------------------------------------------------
+    # Resposta (dentro do limite de 5 segundos)
+    # ---------------------------------------------------------------------
+    # Se o código chegar até aqui, significa que:
+    # 1. A rota foi encontrada.
+    # 2. O JSON foi validado pelo Pydantic.
+    # 3. O status 201 será retornado.
+    
+    return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin, "mensagem": "Dados logados com sucesso."}
 
-        insert_query = """
-        INSERT INTO localizacao_raw (
-            vehicle_id, vin, vehicle_identification, hour_meter, fuel_level, 
-            compass_bearing, speed, latitude, longitude, ts_leitura, 
-            org_id, org_name, fields_tags, data_recebimento
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (vehicle_id, ts_leitura) DO NOTHING;
-        """
-        
-        # 3. Execução
-        cursor.execute(insert_query, (
-            dados_dict['vehicle_id'], dados_dict['vin'], dados_dict['vehicle_identification'], 
-            dados_dict['hour_meter'], dados_dict['fuel_level'], dados_dict['compass_bearing'], 
-            dados_dict['speed'], dados_dict['latitude'], dados_dict['longitude'], 
-            dados_dict['ts'], dados_dict['org_id'], dados_dict['org_name'], 
-            fields_str, datetime.now()
-        ))
-        
-        conn.commit()
-        
-        print(f"Log: Localização do veículo {dados_dict['vin']} salva. Lat/Lon: {dados_dict['latitude']}/{dados_dict['longitude']}")
-        
-    except psycopg2.Error as e:
-        if conn: conn.rollback()
-        print(f"ERRO CRÍTICO NO DB: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erro interno ao persistir dados de localização."
-        )
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-    return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin}
-
-
-
-
+# Fim do main.py
