@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+gunicorn
+pydantic  # Já deve vir com o FastAPI, mas é bom garantir
