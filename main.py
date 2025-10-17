@@ -37,7 +37,7 @@ DB_URL = os.environ.get("DATABASE_URL")
 
 @app.post("/webhook-inscricoes", status_code=status.HTTP_201_CREATED)
 async def receber_webhook_localizacao(
-    dados_localizacao: LocalizacaoPayload,
+    dados_localizacao: LocalizacaoEmTempoReal,
     request: Request
 ):
     """
@@ -97,5 +97,6 @@ async def receber_webhook_localizacao(
         if conn: conn.close()
 
     return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin}
+
 
 
