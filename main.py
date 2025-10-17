@@ -9,7 +9,7 @@ from typing import List, Optional # Usaremos List para "fields" e Optional para 
 # 1. Modelo de Dados (AJUSTADO PARA LOCALIZAÇÃO DE VEÍCULOS)
 # =========================================================================
 
-class LocalizacaoPayload(BaseModel):
+class LocalizacaoEmTempoReal(BaseModel):
     vehicle_id: str
     vin: str # Vehicle Identification Number (Chassi)
     vehicle_identification: str
@@ -97,4 +97,5 @@ async def receber_webhook_localizacao(
         if conn: conn.close()
 
     return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin}
+
 
