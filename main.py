@@ -10,18 +10,18 @@ from typing import List, Optional # Usaremos List para "fields" e Optional para 
 # =========================================================================
 
 class LocalizacaoEmTempoReal(BaseModel):
-    vehicle_id: str
-    vin: str # Vehicle Identification Number (Chassi)
-    vehicle_identification: str
-    hour_meter: float
-    fuel_level: float
+    vehicle_id: Optional[str] = None
+    vin: Optional[str] = None # Vehicle Identification Number (Chassi)
+    vehicle_identification: Optional[str] = None
+    hour_meter: Optional[float] = None
+    fuel_level: Optional[float] = None
     compass_bearing: int
-    speed: float
-    latitude: float
-    longitude: float
-    ts: datetime # Timestamp da leitura (o Pydantic converte a string ISO para datetime)
-    org_id: str
-    org_name: str
+    speed: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    ts: Optional[datetime] = None # Timestamp da leitura (o Pydantic converte a string ISO para datetime)
+    org_id: Optional[str] = None
+    org_name: Optional[str] = None
     fields: Optional[List[str]] = None # Lista de strings, pode ser nulo/vazio
 
 # =========================================================================
@@ -97,6 +97,7 @@ async def receber_webhook_localizacao(
         if conn: conn.close()
 
     return {"status": "sucesso", "veiculo_recebido": dados_localizacao.vin}
+
 
 
 
